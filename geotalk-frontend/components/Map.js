@@ -1,109 +1,221 @@
-// Add 'use client' at the top to mark it as a Client Component
-'use client';
 
-// import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet';
-// import 'leaflet/dist/leaflet.css';
-// import axios from 'axios';
-// import { useEffect, useState } from 'react';
-
-// const Map = () => {
-//   const [geoData, setGeoData] = useState([]);  // State to store an array of GeoJSON data
-
-//   useEffect(() => {
-//     // Fetch the list of GeoData objects from the backend API
-//     axios.get('http://localhost:8000/api/geodata/')
-//       .then(response => {
-//         // Fetch the vector data for each GeoData object
-//         const requests = response.data.map(geo => axios.get(geo.vector_data));
-//         return Promise.all(requests);  // Wait for all requests to resolve
-//       })
-//       .then(responses => {
-//         setGeoData(responses.map(res => res.data));  // Store all GeoJSON data
-//       })
-//       .catch(error => console.error(error));
-//   }, []);
-
-//   return (
-//     <MapContainer center={[51.505, -0.09]} zoom={13} style={{ height: "100vh", width: "100%" }}>
-//       <TileLayer
-//         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-//       />
-//       {geoData.map((data, index) => (
-//         <GeoJSON key={index} data={data} />  // Display each GeoJSON data layer
-//       ))}
-//     </MapContainer>
-//   );
-// };
-
-// export default Map;
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import dynamic from 'next/dynamic';
 import 'leaflet/dist/leaflet.css';
+import { LatLngBounds } from 'leaflet';
 
-// Dynamically import Leaflet components
+// Dynamically import Leaflet components with SSR disabled
 const MapContainer = dynamic(() => import('react-leaflet').then(mod => mod.MapContainer), { ssr: false });
 const TileLayer = dynamic(() => import('react-leaflet').then(mod => mod.TileLayer), { ssr: false });
 const GeoJSON = dynamic(() => import('react-leaflet').then(mod => mod.GeoJSON), { ssr: false });
 
 const GeoDataDisplay = () => {
-  const [geoDataList, setGeoDataList] = useState([]); // List to store all GeoData objects
-  const [selectedGeoData, setSelectedGeoData] = useState(null); // Selected GeoData object
+  const [geoJsonDataList, setGeoJsonDataList] = useState([]); // Store all GeoJSON data from the URL
+  const [mapBounds, setMapBounds] = useState(null); // Store the map bounds
+  const [rasterUrls, setRasterUrls] = useState([]); // Store raster image URLs
+  const [geoNames, setGeoNames] = useState([]); // Store GeoJSON names
 
-  // Fetch GeoData list from backend
+  // Fetch all GeoData objects from the backend
   useEffect(() => {
-    axios.get('http://localhost:8000/api/geodata/')
+    axios.get('http://localhost:8000/api/geodata/') // Fetch list of GeoData objects
       .then(response => {
-        setGeoDataList(response.data); // Store the list of GeoData objects
+        const geoDataList = response.data;
+
+        // Fetch vector and raster data for each GeoData object
+        const fetchPromises = geoDataList.map(geoData =>
+          axios.get(geoData.vector_data).then(vectorResponse => ({
+            name: geoData.name,
+            vectorData: vectorResponse.data,
+            rasterUrl: geoData.raster_data
+          }))
+        );
+
+        return Promise.all(fetchPromises);
       })
-      .catch(error => console.error('Error fetching GeoData:', error));
+      .then(geoJsonDataList => {
+        setGeoJsonDataList(geoJsonDataList); // Store all GeoJSON data
+        setRasterUrls(geoJsonDataList.map(geo => geo.rasterUrl)); // Store raster image URLs
+        setGeoNames(geoJsonDataList.map(geo => geo.name)); // Store GeoJSON names
+
+        // Calculate combined bounds for all GeoJSON features
+        const allBounds = geoJsonDataList.flatMap(geo => calculateBounds(geo.vectorData));
+        const bounds = new LatLngBounds(allBounds);
+        setMapBounds(bounds); // Set the calculated combined bounds
+      })
+      .catch(error => console.error('Error fetching GeoJSON or raster data:', error));
   }, []);
 
-  // Fetch GeoJSON data for a specific GeoData object
-  const handleSelectGeoData = (geoData) => {
-    setSelectedGeoData(null); // Reset selected data while fetching
-    axios.get(geoData.vector_data)
-      .then(res => {
-        setSelectedGeoData({ ...geoData, vectorData: res.data }); // Store GeoData with vector data
-      })
-      .catch(error => console.error('Error fetching GeoJSON data:', error));
+  // Calculate the bounding box of the GeoJSON data
+  const calculateBounds = (geoJson) => {
+    const coordinates = geoJson.features.flatMap(feature => {
+      return feature.geometry.coordinates[0].map(coord => [coord[1], coord[0]]); // Leaflet expects [lat, lon] instead of [lon, lat]
+    });
+    return coordinates;
+  };
+
+  // Custom style for GeoJSON layer
+  const geoJsonStyle = {
+    color: '#FF0000', // Red color for boundaries
+    weight: 2,        // Line thickness
+    fillOpacity: 0.1  // Light fill color (change opacity as needed)
+  };
+
+  // Function to render popups with the feature's properties
+  const onEachFeature = (feature, layer) => {
+    if (feature.properties) {
+      const popupContent = `
+        <strong>Station Name:</strong> ${feature.properties.STATION_NA}<br/>
+        <strong>Division:</strong> ${feature.properties.Division}<br/>
+        <strong>Address:</strong> ${feature.properties.ADDRESS}<br/>
+        <strong>Phone Number:</strong> ${feature.properties.PHONE_NUMB}<br/>
+        <strong>Area (Sq km):</strong> ${feature.properties.Area_Sq_km}<br/>
+        <strong>Population:</strong> ${feature.properties.Pop_by_Dis}
+      `;
+      layer.bindPopup(popupContent); // Attach the popup to each feature
+    }
   };
 
   return (
     <div>
       <h1>Geo Data Visualization</h1>
 
-      {/* Display GeoData List and allow selection */}
-      <ul>
-        {geoDataList.map(geoData => (
-          <li key={geoData.id}>
-            <button onClick={() => handleSelectGeoData(geoData)}>
-              {geoData.name}
-            </button>
-          </li>
-        ))}
-      </ul>
+      {/* If vector data is available, display it */}
+      {geoJsonDataList.length > 0 && mapBounds && (
+        <MapContainer bounds={mapBounds} center={[53.0, -8.0]} zoom={6} style={{ height: '500px', width: '100%' }}>
+          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          
+          {/* Loop through each GeoJSON data and add to the map */}
+          {geoJsonDataList.map((geo, index) => (
+            <GeoJSON key={index} data={geo.vectorData} style={geoJsonStyle} onEachFeature={onEachFeature} />
+          ))}
 
-      {/* If vector data and raster data are available, display them */}
-      {selectedGeoData && (
-        <div>
-          <h2>{selectedGeoData.name}</h2>
-          <MapContainer center={[51.505, -0.09]} zoom={13} style={{ height: '500px', width: '100%' }}>
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-            <GeoJSON data={selectedGeoData.vectorData} />
-          </MapContainer>
-
-          {/* Display raster image */}
-          {selectedGeoData.raster_data && (
-            <div>
-              <h3>Raster Image</h3>
-              <img src={selectedGeoData.raster_data} alt="Raster Data" style={{ maxWidth: '100%' }} />
-            </div>
-          )}
-        </div>
+          {/* If a raster URL is available, add it as a tile layer */}
+          {rasterUrls.map((rasterUrl, index) => (
+            rasterUrl && (
+              <TileLayer
+                key={index}
+                url={rasterUrl}  // Use the raster URL as the TileLayer URL
+                attribution={`Raster Layer for ${geoNames[index]}`}  // Add attribution or name
+              />
+            )
+          ))}
+        </MapContainer>
       )}
     </div>
   );
 };
 
 export default GeoDataDisplay;
+
+// import { useEffect, useState } from 'react';
+// import axios from 'axios';
+// import dynamic from 'next/dynamic';
+// import 'leaflet/dist/leaflet.css';
+// import { LatLngBounds } from 'leaflet';
+
+// // Dynamically import Leaflet components with SSR disabled
+// const MapContainer = dynamic(() => import('react-leaflet').then(mod => mod.MapContainer), { ssr: false });
+// const TileLayer = dynamic(() => import('react-leaflet').then(mod => mod.TileLayer), { ssr: false });
+// const GeoJSON = dynamic(() => import('react-leaflet').then(mod => mod.GeoJSON), { ssr: false });
+// const ImageOverlay = dynamic(() => import('react-leaflet').then(mod => mod.ImageOverlay), { ssr: false });
+
+// const GeoDataDisplay = () => {
+//   const [geoJsonDataList, setGeoJsonDataList] = useState([]); // Store all GeoJSON data from the URL
+//   const [mapBounds, setMapBounds] = useState(null); // Store the map bounds
+//   const [rasterUrls, setRasterUrls] = useState([]); // Store raster image URLs
+//   const [geoNames, setGeoNames] = useState([]); // Store GeoJSON names
+
+//   // Fetch all GeoData objects from the backend
+//   useEffect(() => {
+//     axios.get('http://localhost:8000/api/geodata/') // Fetch list of GeoData objects
+//       .then(response => {
+//         const geoDataList = response.data;
+
+//         // Fetch vector and raster data for each GeoData object
+//         const fetchPromises = geoDataList.map(geoData =>
+//           axios.get(geoData.vector_data).then(vectorResponse => ({
+//             name: geoData.name,
+//             vectorData: vectorResponse.data,
+//             rasterUrl: geoData.raster_data,
+//             rasterBounds: geoData.raster_bounds // Assuming backend returns bounds for the raster image
+//           }))
+//         );
+
+//         return Promise.all(fetchPromises);
+//       })
+//       .then(geoJsonDataList => {
+//         setGeoJsonDataList(geoJsonDataList); // Store all GeoJSON data
+//         setRasterUrls(geoJsonDataList.map(geo => geo.rasterUrl)); // Store raster image URLs
+//         setGeoNames(geoJsonDataList.map(geo => geo.name)); // Store GeoJSON names
+
+//         // Calculate combined bounds for all GeoJSON features
+//         const allBounds = geoJsonDataList.flatMap(geo => calculateBounds(geo.vectorData));
+//         const bounds = new LatLngBounds(allBounds);
+//         setMapBounds(bounds); // Set the calculated combined bounds
+//       })
+//       .catch(error => console.error('Error fetching GeoJSON or raster data:', error));
+//   }, []);
+
+//   // Calculate the bounding box of the GeoJSON data
+//   const calculateBounds = (geoJson) => {
+//     const coordinates = geoJson.features.flatMap(feature => {
+//       return feature.geometry.coordinates[0].map(coord => [coord[1], coord[0]]); // Leaflet expects [lat, lon] instead of [lon, lat]
+//     });
+//     return coordinates;
+//   };
+
+//   // Custom style for GeoJSON layer
+//   const geoJsonStyle = {
+//     color: '#FF0000', // Red color for boundaries
+//     weight: 2,        // Line thickness
+//     fillOpacity: 0.1  // Light fill color (change opacity as needed)
+//   };
+
+//   // Function to render popups with the feature's properties
+//   const onEachFeature = (feature, layer) => {
+//     if (feature.properties) {
+//       const popupContent = `
+//         <strong>Station Name:</strong> ${feature.properties.STATION_NA}<br/>
+//         <strong>Division:</strong> ${feature.properties.Division}<br/>
+//         <strong>Address:</strong> ${feature.properties.ADDRESS}<br/>
+//         <strong>Phone Number:</strong> ${feature.properties.PHONE_NUMB}<br/>
+//         <strong>Area (Sq km):</strong> ${feature.properties.Area_Sq_km}<br/>
+//         <strong>Population:</strong> ${feature.properties.Pop_by_Dis}
+//       `;
+//       layer.bindPopup(popupContent); // Attach the popup to each feature
+//     }
+//   };
+
+//   return (
+//     <div>
+//       <h1>Geo Data Visualization</h1>
+
+//       {/* If vector data is available, display it */}
+//       {geoJsonDataList.length > 0 && mapBounds && (
+//         <MapContainer bounds={mapBounds} center={[53.0, -8.0]} zoom={6} style={{ height: '500px', width: '100%' }}>
+//           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          
+//           {/* Loop through each GeoJSON data and add to the map */}
+//           {geoJsonDataList.map((geo, index) => (
+//             <GeoJSON key={index} data={geo.vectorData} style={geoJsonStyle} onEachFeature={onEachFeature} />
+//           ))}
+
+//           {/* If a raster URL is available, add it as an image overlay */}
+//           {rasterUrls.map((rasterUrl, index) => (
+//             geoJsonDataList[index].rasterBounds && rasterUrl && (
+//               <ImageOverlay
+//                 key={index}
+//                 url={rasterUrl}  // Use the raster URL for ImageOverlay
+//                 bounds={geoJsonDataList[index].rasterBounds}  // Use the bounds provided for the raster image
+//                 opacity={0.5} // Adjust opacity as needed
+//               />
+//             )
+//           ))}
+//         </MapContainer>
+//       )}
+//     </div>
+//   );
+// };
+
+// export default GeoDataDisplay;

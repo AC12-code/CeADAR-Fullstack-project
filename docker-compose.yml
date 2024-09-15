@@ -1,3 +1,35 @@
+# version: '3.8'
+
+# services:
+#   db:
+#     image: postgis/postgis:13-3.1  # Use a newer version of PostGIS with PostgreSQL 13
+#     environment:
+#       POSTGRES_DB: geotalk_db
+#       POSTGRES_USER: postgres
+#       POSTGRES_PASSWORD: password
+#     ports:
+#       - "5432:5432"
+
+#   django:
+#     build: ./geotalk
+#     volumes:
+#       - ./geotalk:/app
+#     ports:
+#       - "8000:8000"
+#     depends_on:
+#       - db
+
+#   nextjs:
+#     build: ./geotalk-frontend
+#     volumes:
+#       - ./geotalk-frontend:/app
+#     ports:
+#       - "3000:3000"
+#     depends_on:
+#       - django
+
+
+
 version: '3.8'
 
 services:
@@ -9,6 +41,8 @@ services:
       POSTGRES_PASSWORD: password
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
   django:
     build: ./geotalk
@@ -18,6 +52,17 @@ services:
       - "8000:8000"
     depends_on:
       - db
+    command: >
+      sh -c "
+      python manage.py migrate 
+      && python manage.py seed_data 
+      && python manage.py runserver 0.0.0.0:8000"
+    environment:
+      - POSTGRES_DB=geotalk_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - DB_HOST=db
+      - DB_PORT=5432
 
   nextjs:
     build: ./geotalk-frontend
@@ -28,3 +73,5 @@ services:
     depends_on:
       - django
 
+volumes:
+  postgres_data:
