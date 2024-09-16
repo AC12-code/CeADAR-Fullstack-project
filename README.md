@@ -4,7 +4,7 @@
    
   ![geo data list](https://github.com/user-attachments/assets/8774dd94-8445-4c2a-9458-cd2c777cab1a)
   
-3)Clicking on vector_data link shows yo the geojson data at <http://localhost:8000/media/vectors/Sample_vector.geojson>
+3)Clicking on vector_data link shows you the geojson data at <http://localhost:8000/media/vectors/Sample_vector.geojson>
 
 ![vector](https://github.com/user-attachments/assets/b6c23f1e-92c7-4f25-a270-aac494125b0a)
 
