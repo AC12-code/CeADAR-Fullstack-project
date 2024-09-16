@@ -16,7 +16,7 @@
 
 ![front](https://github.com/user-attachments/assets/13d16207-2a50-465f-9b3c-92772905ff31)
 
-7) To display the raster data as a tile layer it is converted from .tif to .png tiles in the data/rasters/tiles directory with the help of gdal using th following command gdal2tiles.py -p mercator -z 0-11 /app/data/rasters/Sample_raster.tif /app/data/rasters/tiles placed in docker-compose.yml.
+7) To display the raster data as a tile layer it is converted from .tif to .png tiles in the data/rasters/tiles directory with the help of gdal using the following command gdal2tiles.py -p mercator -z 0-11 /app/data/rasters/Sample_raster.tif /app/data/rasters/tiles placed in docker-compose.yml.
 8) The tiles are served at http://localhost:8000/media/rasters/tiles/{z}/{x}/{y}.png.
 For eg. <http://localhost:8000/media/rasters/tiles/11/1026/1364.png> displays the following tile. Tiles are present for all zoom levels.
 ![tile](https://github.com/user-attachments/assets/a8be1727-662f-490b-baac-a769280ffea3)
