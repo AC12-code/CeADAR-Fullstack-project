@@ -22,7 +22,7 @@ const Home = () => {
       {/* Main content */}
       <main className={styles.main}>
         <h1 className={styles.title}>Welcome to Geo Data Visualisation</h1>
-        <h2 className={styles.subtitle}>Explore Geo Data on a Global Scale</h2>
+        
 
         {/* Render the GeoDataDisplay component */}
         <div className={styles.mapContainer}>

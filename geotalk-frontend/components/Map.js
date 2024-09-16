@@ -78,7 +78,7 @@ const GeoDataDisplay = () => {
 
   return (
     <div>
-      <h1>Geo Data Visualisation</h1>
+      <h2>Explore Geo Data</h2>
 
       {/* If vector data is available, display it */}
       {geoJsonDataList.length > 0 && mapBounds && (
